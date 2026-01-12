@@ -1,0 +1,330 @@
+syntax = "proto3";
+
+package buildservice.v1;
+
+option go_package = "github.com/accretional/rpcfun/gen/buildservice/v1;buildservicev1";
+
+import "google/protobuf/empty.proto";
+import "buildservice/v1/builder.proto";
+import "buildservice/v1/files.proto";
+
+// RemoteBuildService provides remote Go/gRPC build capabilities
+service RemoteBuildService {
+  // CreateBuildSession initiates a new build session for file uploads
+  rpc CreateBuildSession(CreateBuildSessionRequest) returns (CreateBuildSessionResponse);
+  
+  // UploadFiles streams files to the build session
+  rpc UploadFiles(stream UploadFilesRequest) returns (UploadFilesResponse);
+  
+  // UploadFilesSimple uploads all files in a single request (for smaller projects)
+  rpc UploadFilesSimple(UploadFilesSimpleRequest) returns (UploadFilesResponse);
+  
+  // ValidateProject validates the uploaded project structure and proto files
+  rpc ValidateProject(ValidateProjectRequest) returns (ValidateProjectResponse);
+  
+  // RegisterServices registers the gRPC service implementations to be integrated
+  rpc RegisterServices(RegisterServicesRequest) returns (RegisterServicesResponse);
+  
+  // StartBuild initiates the build process
+  rpc StartBuild(StartBuildRequest) returns (StartBuildResponse);
+  
+  // StreamBuildLogs streams build logs in real-time
+  rpc StreamBuildLogs(StreamBuildLogsRequest) returns (stream BuildLogEntry);
+  
+  // GetBuildStatus returns the current status of a build job
+  rpc GetBuildStatus(GetBuildStatusRequest) returns (GetBuildStatusResponse);
+  
+  // ListBuilds lists build jobs for the authenticated user
+  rpc ListBuilds(ListBuildsRequest) returns (ListBuildsResponse);
+  
+  // CancelBuild cancels a running build
+  rpc CancelBuild(CancelBuildRequest) returns (CancelBuildResponse);
+  
+  // GetArtifacts returns information about available build artifacts
+  rpc GetArtifacts(GetArtifactsRequest) returns (GetArtifactsResponse);
+  
+  // DownloadArtifact streams the artifact content
+  rpc DownloadArtifact(DownloadArtifactRequest) returns (stream DownloadArtifactResponse);
+  
+  // GetMainTemplate returns the current main.go template for reference
+  rpc GetMainTemplate(GetMainTemplateRequest) returns (GetMainTemplateResponse);
+  
+  // GetSupportedVersions returns supported Go versions and dependencies
+  rpc GetSupportedVersions(google.protobuf.Empty) returns (GetSupportedVersionsResponse);
+}
+
+// Session Management
+message CreateBuildSessionRequest {
+  // Optional: project name for identification
+  string project_name = 1;
+  
+  // Expected total size in bytes (for progress tracking)
+  int64 expected_size_bytes = 2;
+  
+  // Session timeout in seconds (default: 3600)
+  int32 timeout_seconds = 3;
+}
+
+message CreateBuildSessionResponse {
+  // Unique session ID for subsequent operations
+  string session_id = 1;
+  
+  // Session expiration timestamp
+  google.protobuf.Timestamp expires_at = 2;
+  
+  // Maximum upload size allowed
+  int64 max_upload_bytes = 3;
+}
+
+// Simple file upload (non-streaming)
+message UploadFilesSimpleRequest {
+  string session_id = 1;
+  repeated File files = 2;
+}
+
+// Project Validation
+message ValidateProjectRequest {
+  string session_id = 1;
+  
+  // Proto compilation options
+  ProtoCompileOptions proto_options = 2;
+}
+
+message ProtoCompileOptions {
+  // Additional proto import paths
+  repeated string import_paths = 1;
+  
+  // Proto plugins to use
+  repeated ProtoPlugin plugins = 2;
+  
+  // Generate gRPC-Gateway code
+  bool generate_gateway = 3;
+  
+  // Generate validation code (protoc-gen-validate)
+  bool generate_validation = 4;
+}
+
+message ProtoPlugin {
+  string name = 1;  // e.g., "go", "go-grpc", "grpc-gateway"
+  map<string, string> options = 2;
+}
+
+message ValidateProjectResponse {
+  bool valid = 1;
+  
+  // Validation issues
+  repeated ValidationIssue issues = 2;
+  
+  // Discovered proto services
+  repeated DiscoveredService discovered_services = 3;
+  
+  // Discovered Go packages
+  repeated DiscoveredPackage discovered_packages = 4;
+  
+  // Suggested service registrations based on analysis
+  repeated ServiceRegistration suggested_registrations = 5;
+}
+
+message ValidationIssue {
+  ValidationSeverity severity = 1;
+  string file = 2;
+  int32 line = 3;
+  string message = 4;
+  string code = 5;  // Issue code for programmatic handling
+}
+
+enum ValidationSeverity {
+  VALIDATION_SEVERITY_UNSPECIFIED = 0;
+  VALIDATION_SEVERITY_INFO = 1;
+  VALIDATION_SEVERITY_WARNING = 2;
+  VALIDATION_SEVERITY_ERROR = 3;
+}
+
+message DiscoveredService {
+  string proto_file = 1;
+  string package_name = 2;
+  string service_name = 3;
+  repeated string methods = 4;
+}
+
+message DiscoveredPackage {
+  string import_path = 1;
+  string directory = 2;
+  repeated string go_files = 3;
+}
+
+// Service Registration
+message RegisterServicesRequest {
+  string session_id = 1;
+  
+  // Services to integrate with main.go
+  repeated ServiceRegistration services = 2;
+  
+  // Server configuration
+  ServerConfig server_config = 3;
+}
+
+message RegisterServicesResponse {
+  bool success = 1;
+  
+  // Generated integration code preview
+  string generated_code_preview = 2;
+  
+  // Any warnings about the registration
+  repeated string warnings = 3;
+}
+
+// Build Execution
+message StartBuildRequest {
+  string session_id = 1;
+  
+  // Build configuration
+  BuildConfig config = 2;
+  
+  // Run tests before building
+  bool run_tests = 3;
+  
+  // Test configuration
+  TestConfig test_config = 4;
+  
+  // Also build Docker image
+  bool build_docker_image = 5;
+  
+  // Docker build configuration
+  DockerConfig docker_config = 6;
+}
+
+message TestConfig {
+  // Test timeout
+  int32 timeout_seconds = 1;
+  
+  // Enable verbose test output
+  bool verbose = 2;
+  
+  // Test coverage
+  bool coverage = 3;
+  
+  // Specific packages to test (empty = all)
+  repeated string packages = 4;
+  
+  // Test flags
+  repeated string flags = 5;
+}
+
+message DockerConfig {
+  // Base image (default: gcr.io/distroless/static-debian12)
+  string base_image = 1;
+  
+  // Image tags
+  repeated string tags = 2;
+  
+  // Additional labels
+  map<string, string> labels = 3;
+  
+  // Exposed ports
+  repeated int32 expose_ports = 4;
+  
+  // Environment variables
+  map<string, string> env = 5;
+}
+
+message StartBuildResponse {
+  // Build job ID for tracking
+  string build_id = 1;
+  
+  // Initial job information
+  BuildJob job = 2;
+}
+
+// Build Monitoring
+message StreamBuildLogsRequest {
+  string build_id = 1;
+  
+  // Start from this offset (for resuming)
+  int64 offset = 2;
+  
+  // Minimum log level to stream
+  LogLevel min_level = 3;
+}
+
+message GetBuildStatusRequest {
+  string build_id = 1;
+}
+
+message GetBuildStatusResponse {
+  BuildJob job = 1;
+}
+
+message ListBuildsRequest {
+  // Filter by status
+  repeated BuildStatus statuses = 1;
+  
+  // Pagination
+  int32 page_size = 2;
+  string page_token = 3;
+  
+  // Filter by session ID
+  string session_id = 4;
+}
+
+message ListBuildsResponse {
+  repeated BuildJob builds = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message CancelBuildRequest {
+  string build_id = 1;
+}
+
+message CancelBuildResponse {
+  bool success = 1;
+  BuildJob job = 2;
+}
+
+// Artifacts
+message GetArtifactsRequest {
+  string build_id = 1;
+}
+
+message GetArtifactsResponse {
+  repeated Artifact artifacts = 1;
+}
+
+// Template and Version Info
+message GetMainTemplateRequest {
+  // Optionally get template for specific config
+  ServerConfig for_config = 1;
+}
+
+message GetMainTemplateResponse {
+  // The main.go template content
+  string template = 1;
+  
+  // Template variables documentation
+  repeated TemplateVariable variables = 2;
+  
+  // Template version
+  string version = 3;
+}
+
+message TemplateVariable {
+  string name = 1;
+  string description = 2;
+  string default_value = 3;
+  string go_type = 4;
+}
+
+message GetSupportedVersionsResponse {
+  // Supported Go versions
+  repeated string go_versions = 1;
+  
+  // Default Go version
+  string default_go_version = 2;
+  
+  // Supported protoc version
+  string protoc_version = 3;
+  
+  // Pre-installed common dependencies
+  repeated string preinstalled_modules = 4;
+}
