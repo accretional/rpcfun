@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package buildservice.v1;
+
+option go_package = "github.com/yourorg/buildservice/gen/buildservice/v1;buildservicev1";
+
+import "google/protobuf/timestamp.proto";
+
+// Represents a single file in the build context
+message File {
+  // Relative path from the project root (e.g., "pkg/myservice/handler.go")
+  string path = 1;
+  
+  // File content as bytes
+  bytes content = 2;
+  
+  // File type classification
+  FileType type = 3;
+  
+  // Optional: file permissions (unix mode)
+  uint32 mode = 4;
+}
+
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+  FILE_TYPE_PROTO = 1;           // .proto files
+  FILE_TYPE_GO_SOURCE = 2;       // .go source files
+  FILE_TYPE_GO_MOD = 3;          // go.mod
+  FILE_TYPE_GO_SUM = 4;          // go.sum
+  FILE_TYPE_CONFIG = 5;          // config files (yaml, json, toml)
+  FILE_TYPE_OTHER = 6;           // other supporting files
+}
+
+// Build configuration options
+message BuildConfig {
+  // Go version to use (e.g., "1.22", "1.21.5")
+  string go_version = 1;
+  
+  // Target OS (default: linux)
+  string goos = 2;
+  
+  // Target architecture (default: amd64)
+  string goarch = 3;
+  
+  // CGO enabled
+  bool cgo_enabled = 4;
+  
+  // Additional build tags
+  repeated string build_tags = 5;
+  
+  // Additional ldflags
+  repeated string ldflags = 6;
+  
+  // Enable race detector
+  bool race_detector = 7;
+  
+  // Trim paths for reproducible builds
+  bool trim_path = 8;
+  
+  // Build output name (default: "server")
+  string output_name = 9;
+  
+  // Enable static linking
+  bool static_link = 10;
+}
+
+// Server configuration that will be embedded in the built binary
+message ServerConfig {
+  // gRPC server listen address (default: ":50051")
+  string grpc_address = 1;
+  
+  // HTTP/REST gateway address (optional)
+  string http_address = 2;
+  
+  // Enable gRPC reflection
+  bool enable_reflection = 3;
+  
+  // Enable health check service
+  bool enable_health_check = 4;
+  
+  // Graceful shutdown timeout in seconds
+  int32 shutdown_timeout_seconds = 5;
+  
+  // TLS configuration
+  TLSConfig tls = 6;
+  
+  // Interceptor configuration
+  InterceptorConfig interceptors = 7;
+}
+
+message TLSConfig {
+  bool enabled = 1;
+  string cert_file_path = 2;
+  string key_file_path = 3;
+  bool mutual_tls = 4;
+  string ca_file_path = 5;
+}
+
+message InterceptorConfig {
+  bool logging = 1;
+  bool recovery = 2;
+  bool metrics = 3;
+  bool tracing = 4;
+  bool validation = 5;
+  
+  // Custom interceptor packages to import and register
+  repeated CustomInterceptor custom_interceptors = 6;
+}
+
+message CustomInterceptor {
+  // Go import path
+  string import_path = 1;
+  
+  // Function name that returns the interceptor
+  string unary_func = 2;
+  string stream_func = 3;
+}
+
+// Build job status
+enum BuildStatus {
+  BUILD_STATUS_UNSPECIFIED = 0;
+  BUILD_STATUS_QUEUED = 1;
+  BUILD_STATUS_PREPARING = 2;
+  BUILD_STATUS_COMPILING_PROTOS = 3;
+  BUILD_STATUS_GENERATING_CODE = 4;
+  BUILD_STATUS_BUILDING = 5;
+  BUILD_STATUS_TESTING = 6;
+  BUILD_STATUS_PACKAGING = 7;
+  BUILD_STATUS_COMPLETED = 8;
+  BUILD_STATUS_FAILED = 9;
+  BUILD_STATUS_CANCELLED = 10;
+}
+
+// Build job information
+message BuildJob {
+  // Unique build job ID
+  string id = 1;
+  
+  // Current status
+  BuildStatus status = 2;
+  
+  // Creation timestamp
+  google.protobuf.Timestamp created_at = 3;
+  
+  // Start timestamp
+  google.protobuf.Timestamp started_at = 4;
+  
+  // Completion timestamp
+  google.protobuf.Timestamp completed_at = 5;
+  
+  // Build configuration used
+  BuildConfig build_config = 6;
+  
+  // Server configuration used
+  ServerConfig server_config = 7;
+  
+  // Error message if failed
+  string error_message = 8;
+  
+  // Build duration in milliseconds
+  int64 duration_ms = 9;
+}
+
+// Build artifact information
+message Artifact {
+  // Artifact type
+  ArtifactType type = 1;
+  
+  // Filename
+  string filename = 2;
+  
+  // Size in bytes
+  int64 size_bytes = 3;
+  
+  // SHA256 checksum
+  string sha256 = 4;
+  
+  // Download URL (if using external storage)
+  string download_url = 5;
+  
+  // Expiration time for the download URL
+  google.protobuf.Timestamp expires_at = 6;
+}
+
+enum ArtifactType {
+  ARTIFACT_TYPE_UNSPECIFIED = 0;
+  ARTIFACT_TYPE_BINARY = 1;           // Compiled Go binary
+  ARTIFACT_TYPE_DOCKER_IMAGE = 2;     // Docker image tar
+  ARTIFACT_TYPE_GENERATED_CODE = 3;   // Generated protobuf/grpc code
+  ARTIFACT_TYPE_BUILD_LOG = 4;        // Complete build log
+}
+
+// Log entry for build streaming
+message BuildLogEntry {
+  google.protobuf.Timestamp timestamp = 1;
+  LogLevel level = 2;
+  string message = 3;
+  string stage = 4;  // Current build stage
+}
+
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_DEBUG = 1;
+  LOG_LEVEL_INFO = 2;
+  LOG_LEVEL_WARN = 3;
+  LOG_LEVEL_ERROR = 4;
+}
