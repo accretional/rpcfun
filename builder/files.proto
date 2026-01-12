@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package buildservice.v1;
+
+option go_package = "github.com/yourorg/buildservice/gen/buildservice/v1;buildservicev1";
+
+import "buildservice/v1/builder.proto";
+
+// Request to upload files for a build
+message UploadFilesRequest {
+  // Build session ID (obtained from CreateBuildSession)
+  string session_id = 1;
+  
+  // File chunk for streaming upload
+  oneof data {
+    // File metadata (sent first for each file)
+    FileMetadata metadata = 2;
+    
+    // File content chunk
+    bytes chunk = 3;
+  }
+}
+
+message FileMetadata {
+  string path = 1;
+  FileType type = 2;
+  int64 total_size = 3;
+  uint32 mode = 4;
+}
+
+message UploadFilesResponse {
+  // Number of files successfully uploaded
+  int32 files_uploaded = 1;
+  
+  // Total bytes received
+  int64 bytes_received = 2;
+  
+  // Any validation errors
+  repeated FileValidationError errors = 3;
+}
+
+message FileValidationError {
+  string path = 1;
+  string error = 2;
+}
+
+// Request to download build artifacts
+message DownloadArtifactRequest {
+  string build_id = 1;
+  ArtifactType artifact_type = 2;
+}
+
+message DownloadArtifactResponse {
+  oneof data {
+    // Artifact metadata (sent first)
+    Artifact metadata = 1;
+    
+    // Content chunk
+    bytes chunk = 2;
+  }
+}
