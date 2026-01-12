@@ -2,7 +2,13 @@
 
 What if we used something like the builder logic from https://pkg.go.dev/github.com/jhump/protoreflect/v2@v2.0.0-beta.2/protobuilder#pkg-overview, dynamic loading of service implementation binaries, and explicitly bound, named Method-Impl pairs to create a Function abstraction in proto/grpc?
 
-Then, what if we implemented general support for the Unix File I/O pattern (actually more based on Plan9, because we want everything to be a file) and MapReduce to implement proto-based ETL on the command line? Like a command that sequences Unix pipes to process text, except with proto messages or arbitrary byte streams. Some of the code below is AI generated but it's based on a pattern I've seen before, starting a grpc server over uds dynamically and configuring stdin through it and stdout out of it. It just also implements hot loading of a service impl
+Then, what if we implemented general support for the Unix File I/O pattern (actually more based on Plan9, because we want everything to be a file) and MapReduce to implement proto-based ETL on the command line? Like a command that sequences Unix pipes to process text, except with proto messages or arbitrary byte streams. Some of the first set of code below is AI generated but it's based on a pattern I've used before, starting a grpc server over uds dynamically and configuring stdin through it and stdout out of it. It also implements hot loading of a service impl. That part I'm pretty sure works. So I'm pretty sure that binding that loaded Service to a Function would work.
+
+Doing this with Map Reduce would require introducing some notion of higher order functions, though. It's annoying to represent those because they have different message types than their base Functions, so we might be converting from eg Foo->Bar to stream Foo-> stream Bar, or Foo->Bar->Baz to Foo->stream Foo->stream Bar -> Baz -> empty. If we make all the types in the middle Any/anonymous we lose type validation and the ability to persist these kinds of Functions. Also, the Functions we could make based on what I have below, also aren't capable of things like partially bound function arguments and currying.
+
+But if we used https://pkg.go.dev/github.com/jhump/protoreflect/v2@v2.0.0-beta.2/protobuilder#pkg-overview to create composite types matching the relationship between a Higher Order Function and base function(s), we could represent new kinds of messages on the fly! So, it should be no problem then to handle Foo->stream Foo->stream Bar -> Baz -> empty or even Foo->(repeated Foo->stream Bar->Baz, Bar->Baz)->Join(Function)->empty.
+
+This first example essentially models something like grpcEcho "foo" based on a dynamically loaded service binary.
 
 ```proto
 
@@ -283,9 +289,9 @@ func runClient() {
 
 ```
 
-Doing this with Map Reduce would required some notion of higher order functions, I think. It's annoying to represent those because they have different message types than their base Functions. The Functions below I think aren't capable of things like bound function arguments and currying.
+This example models some of the possible ways mapreduce/stream processing with HOF could look. But it's very rough.
 
-But if we used https://pkg.go.dev/github.com/jhump/protoreflect/v2@v2.0.0-beta.2/protobuilder#pkg-overview to create composite types matching the relationship between a Higher Order Function and base function(s), we could represent those new messages!
+The reason Plan9 is in there is that I was trying to figure out how to implment it for general grpc I/O, and realized that being able to open an I/O stream, do some stuff, and save it to a new file meant that you could then have MULTIPLE steams opened on the new file. So you could implement arbitrary DAGs of rpc streaming pipelines over a filesystem, if you could figure out how to do the higher order functions/fs modeling properly.
 
 ```proto
 message FooRequest {
@@ -375,4 +381,4 @@ service MapReduce {
 }
 ```
 
-Instead of PipedCall we could actually just do a BuildService after hot loading, and create the permutations between HoF and Functions either with some upfront parsing/planning, or at each step they are ran. I think?
+Instead of PipedCall we could probably just do a BuildService after hot loading, and create the permutations between HoF and Functions either with some upfront parsing/planning, or at each step they are ran. I think?
